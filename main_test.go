@@ -2,6 +2,7 @@ package parallel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -19,6 +20,121 @@ func TestNewParallel(t *testing.T) {
 	p := NewParallel(ctx, executeHandler, resultHandler)
 	if p == nil {
 		t.Fatal("NewParallel should return a non-nil instance")
+	}
+}
+
+func TestParallel2(t *testing.T) {
+	ctx := context.Background()
+	executeHandler := func(target int) (int, error) {
+		time.Sleep(100 * time.Millisecond)
+		if target == 5 {
+			return -1, errors.New("error at 5")
+		}
+		return target * 2, nil
+	}
+
+	resultHandler := func(result int, err error, cancel context.CancelFunc) {
+		if err != nil {
+			t.Logf("Received error: %v", err)
+			cancel()
+		} else {
+			t.Logf("Received result: %d", result)
+		}
+	}
+
+	p := NewParallel(ctx, executeHandler, resultHandler)
+	p.ReadyExecute()
+
+	for i := 0; i < 10; i++ {
+		p.Execute(i)
+	}
+
+	p.Wait()
+}
+
+func TestParallelLoopCancel(t *testing.T) {
+	ctx := context.Background()
+
+	executeHandler := func(target int) (int, error) {
+		time.Sleep(100 * time.Millisecond)
+		return target * 2, nil
+	}
+
+	resultHandler := func(result int, err error, cancel context.CancelFunc) {
+		if result >= 10 {
+			cancel()
+		} else {
+			t.Logf("Received result: %d", result)
+		}
+	}
+
+	p := NewParallel(ctx, executeHandler, resultHandler)
+	p.ReadyExecute()
+
+	for i := 0; i < 10; i++ {
+		p.Execute(i)
+	}
+
+	p.Wait()
+}
+
+func TestParallelMultipleReadyExecute(t *testing.T) {
+	ctx := context.Background()
+
+	executeHandler := func(target int) (int, error) {
+		time.Sleep(100 * time.Millisecond)
+		return target * 2, nil
+	}
+
+	resultHandler := func(result int, err error, cancel context.CancelFunc) {
+		t.Logf("Received result: %d", result)
+	}
+
+	p := NewParallel(ctx, executeHandler, resultHandler)
+
+	// Call ReadyExecute multiple times
+	p.ReadyExecute()
+	p.ReadyExecute()
+
+	for i := 0; i < 10; i++ {
+		p.Execute(i)
+	}
+
+	p.Wait()
+}
+
+func TestParallelCancel(t *testing.T) {
+	ctx := context.Background()
+
+	executeHandler := func(target int) (int, error) {
+		time.Sleep(100 * time.Millisecond)
+		return target * 2, nil
+	}
+
+	resultHandler := func(result int, err error, cancel context.CancelFunc) {
+		t.Logf("Received result: %d", result)
+		if result >= 10 {
+			cancel()
+		}
+	}
+
+	p := NewParallel(ctx, executeHandler, resultHandler)
+	p.ReadyExecute()
+
+	for i := 0; i < 10; i++ {
+		p.Execute(i)
+	}
+
+	p.Wait()
+
+	// Cancel after all tasks are done
+	p.Cancel()
+
+	select {
+	case <-p.ctx.Done():
+		t.Log("Context is canceled")
+	default:
+		t.Error("Context should be canceled")
 	}
 }
 
