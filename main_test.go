@@ -2,6 +2,7 @@ package parallel
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -347,5 +348,80 @@ func Test_ExecuteHandler_Panic(t *testing.T) {
 
 	p.ReadyExecute()
 	p.Execute("test")
+	p.Wait()
+}
+
+func TestParallel_Execute(t *testing.T) {
+	p := NewParallel[int, int](func(ctx *ExecuteContext[int, int]) (*int, error) {
+		v := ctx.Target() + 1
+		return &v, nil
+	}, func(ctx *ResultContext[int, int]) {
+		if ctx.Result() != 2 {
+			t.Error("result error")
+		}
+	})
+	p.Execute(1)
+	p.Wait()
+}
+
+func TestParallel_Cancel(t *testing.T) {
+	p := NewParallel[int, int](func(ctx *ExecuteContext[int, int]) (*int, error) {
+		time.Sleep(time.Second)
+		v := ctx.Target() + 1
+		return &v, nil
+	}, func(ctx *ResultContext[int, int]) {
+		if ctx.Result() != 2 {
+			t.Error("result error")
+		}
+	})
+	p.Execute(1)
+	time.Sleep(time.Millisecond * 500)
+	p.Cancel()
+	p.Wait()
+}
+
+func TestParallel_Execute_MultipleTasks(t *testing.T) {
+	p := NewParallel[int, int](func(ctx *ExecuteContext[int, int]) (*int, error) {
+		v := ctx.Target() + 1
+		return &v, nil
+	}, func(ctx *ResultContext[int, int]) {
+		if ctx.Result() != 2 {
+			t.Error("")
+		}
+	})
+	p.Execute(1)
+	p.Execute(2)
+	p.Wait()
+}
+
+func TestParallel_Execute_WithSharedContext(t *testing.T) {
+	p := NewParallel[int, int](func(ctx *ExecuteContext[int, int]) (*int, error) {
+		ctx.SetValue("key", "value")
+		v := ctx.Target() + 1
+		return &v, nil
+	}, func(ctx *ResultContext[int, int]) {
+		if ctx.Result() != 2 {
+			t.Error("")
+		}
+
+		if ctx.Value("key") != "value" {
+			t.Error("")
+		}
+
+	})
+	p.Execute(1)
+	p.Wait()
+}
+
+func TestParallel_Execute_WithError(t *testing.T) {
+	p := NewParallel[int, int](func(ctx *ExecuteContext[int, int]) (*int, error) {
+		v := ctx.Target() + 1
+		return &v, fmt.Errorf("error")
+	}, func(ctx *ResultContext[int, int]) {
+		if ctx.Error() == nil {
+			t.Error("")
+		}
+	})
+	p.Execute(1)
 	p.Wait()
 }
