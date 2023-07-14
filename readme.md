@@ -8,6 +8,8 @@ The module defines a `Parallel` struct, which is a parallel executor that receiv
 
 This module also provides two context structs: `ExecuteContext` and `ResultContext`, which carry the relevant information and provide utility methods to the handler functions during execution and result handling, respectively.
 
+Markdown is writed by AI.
+
 ## Features
 
 - Task execution and result handling in parallel.
@@ -20,7 +22,7 @@ This module also provides two context structs: `ExecuteContext` and `ResultConte
 First, import the module:
 
 ```go
-import "github.com/yourusername/parallel"
+import "github.com/474420502/parallel"
 ```
 
 ### Initialization
@@ -102,8 +104,6 @@ In this example, we create a new `Parallel` executor that performs some work on 
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contributing
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests.
+ 
