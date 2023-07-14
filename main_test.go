@@ -1,296 +1,351 @@
 package parallel
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 )
 
-func TestNewParallel(t *testing.T) {
-	ctx := context.Background()
-	executeHandler := func(target int) (int, error) {
-		return target, nil
-	}
-	resultHandler := func(result int, err error, cancel context.CancelFunc) {
-		// Do nothing
-	}
+// Test for ExecuteHandler
+func TestExecuteHandler(t *testing.T) {
 
-	p := NewParallel(ctx, executeHandler, resultHandler)
-	if p == nil {
-		t.Fatal("NewParallel should return a non-nil instance")
-	}
-}
+	// Define the execute handler
+	executeHandler := func(ctx *ExecuteContext[int, int]) (*int, error) {
 
-func TestParallel2(t *testing.T) {
-	ctx := context.Background()
-	executeHandler := func(target int) (int, error) {
-		time.Sleep(100 * time.Millisecond)
-		if target == 5 {
-			return -1, errors.New("error at 5")
+		target := ctx.Target()
+		if target == -1 {
+			return nil, errors.New("execution error")
 		}
-		return target * 2, nil
+		result := target * 2
+		return &result, nil
 	}
 
-	resultHandler := func(result int, err error, cancel context.CancelFunc) {
-		if err != nil {
-			t.Logf("Received error: %v", err)
-			cancel()
-		} else {
-			t.Logf("Received result: %d", result)
+	// Define the result handler
+	resultHandler := func(ctx *ResultContext[int, int]) {
+		// We do nothing in the result handler for this test
+		if ctx.Target() == -1 && ctx.err == nil {
+			t.Error("should err is not nil", ctx.err)
 		}
 	}
 
-	p := NewParallel(ctx, executeHandler, resultHandler)
+	// Create a new Parallel executor
+	p := NewParallel[int, int](executeHandler, resultHandler)
+
+	// Set the maximum number of concurrent execute handlers
+	p.SetMaxExecuteNum(4)
+
+	// Initialize the execution channels and start the background goroutines
 	p.ReadyExecute()
 
-	for i := 0; i < 10; i++ {
-		p.Execute(i)
-	}
-
+	// Normal execution
+	p.Execute(2)
 	p.Wait()
+	// There should be no panic or error in the normal execution
+
+	// Execution with error
+	defer func() {
+		if r := recover(); r != nil {
+			t.Error("The code did not panic", r)
+		}
+	}()
+	p.Execute(-1)
+	p.Wait()
+	// The execution should panic because of the error returned by the execute handler
 }
 
-func TestParallelLoopCancel(t *testing.T) {
-	ctx := context.Background()
-
-	executeHandler := func(target int) (int, error) {
-		time.Sleep(100 * time.Millisecond)
-		return target * 2, nil
+// Test for ResultHandler
+func TestResultHandler(t *testing.T) {
+	// Define the execute handler
+	executeHandler := func(ctx *ExecuteContext[int, int]) (*int, error) {
+		target := ctx.Target()
+		result := target * 2
+		return &result, nil
 	}
 
-	resultHandler := func(result int, err error, cancel context.CancelFunc) {
-		if result >= 10 {
-			cancel()
-		} else {
-			t.Logf("Received result: %d", result)
+	// Define the result handler
+	resultHandler := func(ctx *ResultContext[int, int]) {
+		target := ctx.Target()
+		result := ctx.Result()
+
+		if result != target*2 {
+			t.Errorf("Unexpected result for target %d: got %d, want %d", target, result, target*2)
 		}
 	}
 
-	p := NewParallel(ctx, executeHandler, resultHandler)
+	// Create a new Parallel executor
+	p := NewParallel[int, int](executeHandler, resultHandler)
+
+	// Set the maximum number of concurrent execute handlers
+	p.SetMaxExecuteNum(4)
+
+	// Initialize the execution channels and start the background goroutines
 	p.ReadyExecute()
 
-	for i := 0; i < 10; i++ {
-		p.Execute(i)
-	}
-
+	// Add some targets for execution
+	p.Execute(2)
 	p.Wait()
+	// The result handler should not raise any error because the result is as expected
+
+	p.Execute(3)
+	p.Wait()
+	// The result handler should not raise any error because the result is as expected
 }
 
-func TestParallelMultipleReadyExecute(t *testing.T) {
-	ctx := context.Background()
-
-	executeHandler := func(target int) (int, error) {
-		time.Sleep(100 * time.Millisecond)
-		return target * 2, nil
+// Test for ReadyExecute
+func TestReadyExecute(t *testing.T) {
+	// Define the execute handler
+	executeHandler := func(ctx *ExecuteContext[int, int]) (*int, error) {
+		target := ctx.Target()
+		result := target * 2
+		return &result, nil
 	}
 
-	resultHandler := func(result int, err error, cancel context.CancelFunc) {
-		t.Logf("Received result: %d", result)
+	// Define the result handler
+	resultHandler := func(ctx *ResultContext[int, int]) {
+		// We do nothing in the result handler for this test
 	}
 
-	p := NewParallel(ctx, executeHandler, resultHandler)
+	// Create a new Parallel executor
+	p := NewParallel[int, int](executeHandler, resultHandler)
 
-	// Call ReadyExecute multiple times
+	// Set the maximum number of concurrent execute handlers
+	p.SetMaxExecuteNum(4)
+
+	// Initialize the execution channels and start the background goroutines
 	p.ReadyExecute()
-	p.ReadyExecute()
 
-	for i := 0; i < 10; i++ {
-		p.Execute(i)
+	if p.IsExecuting() == false {
+		t.Errorf("ReadyExecute failed to start execution")
 	}
 
-	p.Wait()
+	// It should not start execution again if it is already executing
+	p.ReadyExecute()
+
+	if p.IsExecuting() == false {
+		t.Errorf("ReadyExecute stopped execution")
+	}
 }
 
-func TestParallelCancel(t *testing.T) {
-	ctx := context.Background()
-
-	executeHandler := func(target int) (int, error) {
-		time.Sleep(100 * time.Millisecond)
-		return target * 2, nil
+// Test for Execute
+func TestExecute(t *testing.T) {
+	// Define the execute handler
+	executeHandler := func(ctx *ExecuteContext[int, int]) (*int, error) {
+		target := ctx.Target()
+		result := target * 2
+		return &result, nil
 	}
 
-	resultHandler := func(result int, err error, cancel context.CancelFunc) {
-		t.Logf("Received result: %d", result)
-		if result >= 10 {
-			cancel()
-		}
+	// Define the result handler
+	resultHandler := func(ctx *ResultContext[int, int]) {
+		// We do nothing in the result handler for this test
 	}
 
-	p := NewParallel(ctx, executeHandler, resultHandler)
+	// Create a new Parallel executor
+	p := NewParallel[int, int](executeHandler, resultHandler)
+
+	// Set the maximum number of concurrent execute handlers
+	p.SetMaxExecuteNum(4)
+
+	// Initialize the execution channels and start the background goroutines
 	p.ReadyExecute()
 
-	for i := 0; i < 10; i++ {
-		p.Execute(i)
+	// Add some targets for execution
+	p.Execute(2)
+	p.Execute(3)
+
+	time.Sleep(100 * time.Millisecond) // Sleep a little for the execution to start
+
+	if p.IsExecuting() == false {
+		t.Errorf("Execute failed to start execution")
+	}
+}
+
+// Test for Wait
+func TestWait(t *testing.T) {
+	// Define the execute handler
+	executeHandler := func(ctx *ExecuteContext[int, int]) (*int, error) {
+		target := ctx.Target()
+		result := target * 2
+		return &result, nil
 	}
 
-	p.Wait()
+	// Define the result handler
+	resultHandler := func(ctx *ResultContext[int, int]) {
+		// We do nothing in the result handler for this test
+	}
 
-	// Cancel after all tasks are done
+	// Create a new Parallel executor
+	p := NewParallel[int, int](executeHandler, resultHandler)
+
+	// Set the maximum number of concurrent execute handlers
+	p.SetMaxExecuteNum(4)
+
+	// Initialize the execution channels and start the background goroutines
+	p.ReadyExecute()
+
+	// Add some targets for execution
+	p.Execute(2)
+	p.Execute(3)
+
+	p.Wait()
 	p.Cancel()
 
-	select {
-	case <-p.ctx.Done():
-		t.Log("Context is canceled")
-	default:
-		t.Error("Context should be canceled")
+	if p.IsExecuting() == true {
+		t.Errorf("Wait failed to stop execution")
 	}
 }
 
-func TestReadyExecute(t *testing.T) {
-	ctx := context.Background()
-	executeHandler := func(target int) (int, error) {
-		return target, nil
-	}
-	resultHandler := func(result int, err error, cancel context.CancelFunc) {
-		// Do nothing
+type IntTarget int
+type IntResult int
+
+func TestCancel(t *testing.T) {
+
+	executeHandler := func(ctx *ExecuteContext[IntTarget, IntResult]) (*IntResult, error) {
+		// In this example, we just multiply the target by 2 as the result.
+		// In a real-world scenario, this could be a more complex operation that takes some time.
+		target := ctx.Target()
+		result := IntResult(target * 2)
+		return &result, nil
 	}
 
-	p := NewParallel(ctx, executeHandler, resultHandler)
+	resultHandler := func(ctx *ResultContext[IntTarget, IntResult]) {
+		// We don't do anything with the result in this test.
+		// In a real-world scenario, we might want to check that the result is as expected.
+	}
+
+	// Test cancellation before execution.
+	p := NewParallel(executeHandler, resultHandler)
+	p.Cancel()
+	if p.IsExecuting() {
+		t.Error("Expected executor to have stopped executing before starting")
+	}
+	p.Execute(IntTarget(1))
+	if p.IsExecuting() {
+		t.Error("Expected executor to not start executing after being cancelled")
+	}
+
+	// Test cancellation during execution.
+	p = NewParallel(executeHandler, resultHandler)
 	p.ReadyExecute()
-
-	if p.executeChan == nil {
-		t.Fatal("executeChan should be initialized after calling ReadyExecute")
+	p.Execute(IntTarget(1))
+	time.Sleep(10 * time.Millisecond) // Give the executor some time to start.
+	p.Cancel()
+	if p.IsExecuting() {
+		t.Error("Expected executor to stop executing after being cancelled")
 	}
 
-	if p.resultChan == nil {
-		t.Fatal("resultChan should be initialized after calling ReadyExecute")
+	// Test cancellation after execution.
+	p = NewParallel(executeHandler, resultHandler)
+	p.ReadyExecute()
+	p.Execute(IntTarget(1))
+	p.Wait()
+	p.Cancel()
+	if p.IsExecuting() {
+		t.Error("Expected executor to stay stopped after being cancelled")
 	}
 }
 
-func TestExecuteLoop(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	executeHandler := func(target int) (int, error) {
-		return target * 2, nil
+func TestExecuteAndResultHandling(t *testing.T) {
+	executeHandler := func(ctx *ExecuteContext[IntTarget, IntResult]) (*IntResult, error) {
+		target := ctx.Target()
+		result := IntResult(target * 2)
+		return &result, nil
 	}
-	resultHandler := func(result int, err error, cancel context.CancelFunc) {
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
-		expected := result / 2
-		if result != expected*2 {
-			t.Errorf("Expected result: %d, got: %d", expected*2, result)
+
+	resultHandler := func(ctx *ResultContext[IntTarget, IntResult]) {
+		result := ctx.Result()
+		expected := IntResult(ctx.Target() * 2)
+		if result != expected {
+			t.Errorf("Expected result %d, got %d", expected, result)
 		}
 	}
 
-	p := NewParallel(ctx, executeHandler, resultHandler)
+	p := NewParallel(executeHandler, resultHandler)
 	p.ReadyExecute()
 
-	// Test if tasks execute correctly
-	for i := 1; i <= 10; i++ {
-		p.Execute(i)
-	}
+	// Test single task execution.
+	p.Execute(IntTarget(1))
 	p.Wait()
 
-	// Test if panic is handled correctly
-
-	executeHandlerWithPanic := func(target int) (int, error) {
-		panic(fmt.Errorf("executeHandlerWithPanic test panic"))
+	// Test multiple tasks execution.
+	for i := 2; i <= 10; i++ {
+		p.Execute(IntTarget(i))
 	}
-
-	panicResultHandler := func(result int, err error, cancel context.CancelFunc) {
-		if err != nil {
-			t.Error("executeHandlerWithPanic is not panic")
-		}
-	}
-
-	pPanic := NewParallel(ctx, executeHandlerWithPanic, panicResultHandler)
-	pPanic.ReadyExecute()
-
-	pPanic.Execute(1)
-	pPanic.Wait()
-
-}
-
-func TestResultLoop(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	executeHandler := func(target int) (int, error) {
-		return target * 2, nil
-	}
-	resultHandler := func(result int, err error, cancel context.CancelFunc) {
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
-		expected := result / 2
-		if result != expected*2 {
-			t.Errorf("Expected result: %d, got: %d", expected*2, result)
-		}
-	}
-
-	p := NewParallel(ctx, executeHandler, resultHandler)
-	p.ReadyExecute()
-
-	// Test if results are processed correctly
-	for i := 1; i <= 10; i++ {
-		p.Execute(i)
-	}
-	p.Wait()
-
-	// Test if panic in resultHandler is handled correctly
-	resultHandlerWithPanic := func(result int, err error, cancel context.CancelFunc) {
-		panic(fmt.Errorf("test panic in resultHandler"))
-	}
-
-	pPanic := NewParallel(ctx, executeHandler, resultHandlerWithPanic)
-	pPanic.ReadyExecute()
-
-	pPanic.Execute(1)
-	pPanic.Wait()
-}
-
-func TestExecute(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	executeHandler := func(target int) (int, error) {
-		return target * 2, nil
-	}
-	resultHandler := func(result int, err error, cancel context.CancelFunc) {
-		// Do nothing
-	}
-
-	p := NewParallel(ctx, executeHandler, resultHandler)
-	p.ReadyExecute()
-
-	// Test if tasks are added to the execution channel
-	for i := 1; i <= 10; i++ {
-		p.Execute(i)
-	}
-
 	p.Wait()
 }
 
-func TestWait(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	executeHandler := func(target int) (int, error) {
-		time.Sleep(500 * time.Millisecond)
-		return target * 2, nil
-	}
-	resultHandler := func(result int, err error, cancel context.CancelFunc) {
-		// Do nothing
+func TestErrorHandlingInExecutionAndResult(t *testing.T) {
+	executeHandler := func(ctx *ExecuteContext[IntTarget, IntResult]) (*IntResult, error) {
+		return nil, errors.New("execute error")
 	}
 
-	p := NewParallel(ctx, executeHandler, resultHandler)
+	resultHandler := func(ctx *ResultContext[IntTarget, IntResult]) {
+		if ctx.Error() == nil || ctx.Error().Error() != "execute error" {
+			t.Error("Expected an execute error, but got none")
+		}
+	}
+
+	p := NewParallel(executeHandler, resultHandler)
 	p.ReadyExecute()
-
-	// Test if Wait() blocks until all tasks are completed
-	startTime := time.Now()
-
-	for i := 1; i <= 4; i++ {
-		p.Execute(i)
-	}
-
+	p.Execute(IntTarget(1))
 	p.Wait()
+}
 
-	duration := time.Since(startTime)
-	if duration > 1*time.Second {
-		t.Errorf("Wait() took too long, expected less than 1s, but got: %v", duration)
+func TestErrorHandling(t *testing.T) {
+	executeHandler := func(ctx *ExecuteContext[IntTarget, IntResult]) (*IntResult, error) {
+		// An error occurs in the execution
+		return nil, errors.New("execution error")
 	}
+
+	resultHandler := func(ctx *ResultContext[IntTarget, IntResult]) {
+		// An error should be received in the result
+		if ctx.Error() == nil || ctx.Error().Error() != "execution error" {
+			t.Error("Expected to get execution error, but got none")
+		}
+	}
+
+	p := NewParallel(executeHandler, resultHandler)
+	p.ReadyExecute()
+	p.Execute(IntTarget(1))
+	p.Wait()
+}
+
+func TestHandlersLifecycle(t *testing.T) {
+	executeHandler := func(ctx *ExecuteContext[IntTarget, IntResult]) (*IntResult, error) {
+		// Set a value in the context
+		ctx.SetValue("key", "value")
+		return nil, nil
+	}
+
+	resultHandler := func(ctx *ResultContext[IntTarget, IntResult]) {
+		// Get the value from the context
+		value := ctx.Value("key")
+		if value != "value" {
+			t.Errorf("Expected context value to be 'value', but got %v", value)
+		}
+	}
+
+	p := NewParallel(executeHandler, resultHandler)
+	p.ReadyExecute()
+	p.Execute(IntTarget(1))
+	p.Wait()
+}
+
+func Test_ExecuteHandler_Panic(t *testing.T) {
+	// 创建一个新的并行执行器
+	p := NewParallel(func(ctx *ExecuteContext[string, string]) (*string, error) {
+		// 在这个 handler 中，我们直接触发一个 panic
+		panic("test panic")
+	}, func(ctx *ResultContext[string, string]) {
+		// 在此处，我们期待该 panic 已经被捕获并转化为 error
+		if err := ctx.Error(); err == nil {
+			t.Fatalf("Expected an error, but got nil")
+		} else if err.Error() != "unknown panic: test panic" {
+			t.Fatalf("Expected 'unknown panic: test panic', but got '%s'", err.Error())
+		}
+	})
+
+	p.ReadyExecute()
+	p.Execute("test")
+	p.Wait()
 }

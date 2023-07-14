@@ -1,72 +1,67 @@
-Here's an example of a README.md file in English for the `parallel` package:
+# Parallel Module
 
-```markdown
-# Parallel
+This is a Go module that provides a way to execute tasks concurrently and handle their results in parallel. 
 
-`parallel` is a simple Go generics library for parallel task execution. It allows users to define custom execute handlers and result handlers for performing tasks in a parallel environment and processing results when tasks are completed.
+## Introduction
+
+The module defines a `Parallel` struct, which is a parallel executor that receives tasks, executes them concurrently, and handles their results. The tasks and the results are typed using Go's generics feature, allowing you to use any type for them.
+
+This module also provides two context structs: `ExecuteContext` and `ResultContext`, which carry the relevant information and provide utility methods to the handler functions during execution and result handling, respectively.
 
 ## Features
 
-- Implemented using generics, capable of handling tasks and results of any type
-- Customizable execute and result handlers
-- Supports limiting the number of concurrent execute handlers
-- Cancellation and timeout support through `context`
-- Automatically handles panics in concurrent execute and result handlers
-
-## Installation
-
-Using Go Modules:
-
-```
-go get github.com/474420502/parallel
-```
+- Task execution and result handling in parallel.
+- Customizable task execution and result handling logic.
+- Shared value map for communication between tasks.
+- Execution cancellation support.
 
 ## Usage
 
-First, import the `parallel` package:
+First, import the module:
 
 ```go
-import "github.com/474420502/parallel"
+import "github.com/yourusername/parallel"
 ```
 
-Next, create a `Parallel` instance and provide custom execute and result handlers:
+### Initialization
+
+Create a new `Parallel` executor by providing execute and result handler functions:
 
 ```go
-executeHandler := func(target int) (int, error) {
-    return target * 2, nil
-}
-resultHandler := func(result int, err error) {
-    if err != nil {
-        log.Println("Error:", err)
-    } else {
-        log.Println("Result:", result)
-    }
-}
-
-p := parallel.NewParallel(context.Background(), executeHandler, resultHandler)
+p := parallel.NewParallel(executeHandler, resultHandler)
 ```
 
-Initialize the execution channels and start the background goroutines:
+Here, `executeHandler` is a function that receives an `ExecuteContext` and returns a result and an error. And `resultHandler` is a function that receives a `ResultContext`.
+
+### Customization
+
+You can set the maximum number of concurrent execute handlers that can run in parallel using `SetMaxExecuteNum` method:
+
+```go
+p.SetMaxExecuteNum(10) // Set to 10 concurrent tasks.
+```
+
+### Execution
+
+Before executing tasks, you need to call `ReadyExecute` to initialize the executor:
 
 ```go
 p.ReadyExecute()
 ```
 
-Add tasks to be executed in parallel:
+Then, you can add tasks to be executed using `Execute` method:
 
 ```go
-for i := 1; i <= 10; i++ {
-    p.Execute(i)
-}
+p.Execute(target)
 ```
 
-Wait for all tasks to complete and for the results to be processed:
+To wait for all tasks to complete, use:
 
 ```go
 p.Wait()
 ```
 
-Cancel the context (optional):
+To cancel the execution, use:
 
 ```go
 p.Cancel()
@@ -74,44 +69,41 @@ p.Cancel()
 
 ## Example
 
-Here's a complete example showing how to use the `parallel` package to execute tasks in parallel and process their results:
+Here is a simple example of how to use this module:
 
 ```go
-package main
-
-import (
-	"context"
-	"log"
-	"github.com/474420502/parallel"
-)
-
-func main() {
-    executeHandler := func(target int) (int, error) {
-        return target * 2, nil
-    }
-    resultHandler := func(result int, err error) {
-        if err != nil {
-            log.Println("Error:", err)
-        } else {
-            log.Println("Result:", result)
-        }
-    }
-    
-    p := parallel.NewParallel(context.Background(), executeHandler, resultHandler)
-    p.SetMaxExecuteNum(4) // Optional: Set max number of concurrent execute handlers
-    p.ReadyExecute()
-    
-    for i := 1; i <= 10; i++ {
-        p.Execute(i)
-    }
-    
-    p.Wait()
+executeHandler := func(ctx *parallel.ExecuteContext[int, string]) (*string, error) {
+	// Do some work with ctx.Target().
+	// ...
+	result := fmt.Sprintf("Result for target: %v", ctx.Target())
+	return &result, nil
 }
+
+resultHandler := func(ctx *parallel.ResultContext[int, string]) {
+	if ctx.Error() != nil {
+		fmt.Println("An error occurred:", ctx.Error())
+	} else {
+		fmt.Println("Result for target", ctx.Target(), "is", ctx.Result())
+	}
+}
+
+p := parallel.NewParallel(executeHandler, resultHandler)
+p.SetMaxExecuteNum(10)
+p.ReadyExecute()
+
+for i := 0; i < 100; i++ {
+	p.Execute(i)
+}
+
+p.Wait()
 ```
+
+In this example, we create a new `Parallel` executor that performs some work on integers and produces a string as a result. It then waits for all tasks to complete before exiting.
 
 ## License
 
-The `parallel` package is licensed under the [MIT License](LICENSE).
-```
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
 
-This README.md file provides an overview of the `parallel` package, its features, installation, usage, and a complete example. Replace `yourusername` with your GitHub username in the import paths.
+## Contributing
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests.
